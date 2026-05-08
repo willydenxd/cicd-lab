@@ -1,0 +1,82 @@
+name: CI - r14725027
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: ci-r14725027-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-checks:
+    name: TypeScript / Prettier / Vitest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        id: typecheck
+        run: npm run typecheck
+
+      - name: Prettier check
+        id: prettier
+        run: npm run format:check
+
+      - name: Run Vitest with JUnit output
+        id: test
+        run: |
+          mkdir -p reports
+          npm test -- \
+            --reporter=default \
+            --reporter=junit \
+            --outputFile.junit=reports/vitest-junit.xml
+
+      - name: Publish test results to Actions UI
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Vitest Report
+          path: reports/vitest-junit.xml
+          reporter: jest-junit
+          fail-on-error: true
+
+      - name: Upload test report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## CI Pipeline Summary (r14725027)"
+            echo ""
+            echo "| Step                  | Result                              |"
+            echo "| --------------------- | ----------------------------------- |"
+            echo "| TypeScript typecheck  | ${{ steps.typecheck.outcome }}      |"
+            echo "| Prettier check        | ${{ steps.prettier.outcome }}       |"
+            echo "| Vitest tests          | ${{ steps.test.outcome }}           |"
+            echo ""
+            echo "Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
